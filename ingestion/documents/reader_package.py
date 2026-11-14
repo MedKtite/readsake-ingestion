@@ -113,7 +113,9 @@ def _image_path(src: str, content_name: str, names: set[str]) -> str | None:
     return candidate if candidate in names else None
 
 
-def _blocks(root: _Node, chapter_id: str, content_name: str, names: set[str], assets: dict[str, str]) -> list[dict[str, Any]]:
+def _blocks(root: _Node, chapter_id: str, content_name: str, names: set[str], assets: dict[str, str], anchors: dict[str, int] | None = None) -> list[dict[str, Any]]:
+    """Extract reading blocks. When [anchors] is given it receives, for every
+    element id / <a name>, the index of the first block at or after it."""
     result: list[dict[str, Any]] = []
     counter = 0
     block_tags = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre"}
@@ -126,6 +128,11 @@ def _blocks(root: _Node, chapter_id: str, content_name: str, names: set[str], as
 
     def walk(node: _Node) -> None:
         tag = node.tag
+        if anchors is not None:
+            for key in ("id", "name"):
+                value = node.attrs.get(key)
+                if value and value not in anchors:
+                    anchors[value] = len(result)
         if tag in {"table"}:
             rows = []
             for tr in _desc(node, "tr"):
@@ -180,6 +187,129 @@ def _desc(node: _Node, wanted: str) -> list[_Node]:
     return found
 
 
+# Sections shorter than this (title-page lines, links inside a printed contents
+# page, bare half-title headings) are folded into the preceding section.
+_MIN_SECTION_CHARS = 300
+# The shallowest TOC level with at least this many entries becomes the chapter
+# list; deeper entries (numbered subsections) stay inside their chapter.
+_MIN_TOC_ENTRIES = 3
+
+
+def _toc_entries(archive: zipfile.ZipFile, opf: str, opf_root: Any, names: set[str]) -> list[tuple[str, str | None, str]]:
+    """(content file, fragment, label) for the chapter-level table-of-contents
+    entries in reading order — EPUB3 nav document first, then EPUB2 toc.ncx."""
+    import xml.etree.ElementTree as ET
+    ns = {"opf": "http://www.idpf.org/2007/opf"}
+    items = opf_root.findall(".//opf:item", ns)
+    nav = next((i for i in items if "nav" in (i.attrib.get("properties") or "").split()), None)
+    ncx = next((i for i in items if i.attrib.get("media-type") == "application/x-dtbncx+xml"), None)
+
+    def resolve(doc: str, href: str) -> tuple[str, str | None] | None:
+        path, _, fragment = href.partition("#")
+        name = posixpath.normpath(posixpath.join(posixpath.dirname(doc), path)) if path else doc
+        return (name, fragment or None) if name in names else None
+
+    def label(text: str) -> str:
+        return _clean(re.sub(r"\s+", " ", text))
+
+    ncx_ns = "{http://www.daisy.org/z3986/2005/ncx/}"
+    entries: list[tuple[str, str | None, str, int]] = []
+    try:
+        if nav is not None:
+            doc = posixpath.normpath(posixpath.join(posixpath.dirname(opf), nav.attrib["href"]))
+            parser = _Parser()
+            parser.feed(archive.read(doc).decode("utf-8", errors="replace"))
+            navs = [n for n in _desc(parser.root, "nav") if "toc" in (n.attrs.get("epub:type") or n.attrs.get("role") or "")]
+
+            def walk_nav(node: _Node, depth: int) -> None:
+                for child in node.children:
+                    if not isinstance(child, _Node):
+                        continue
+                    if child.tag == "a":
+                        target = resolve(doc, child.attrs.get("href", ""))
+                        if target:
+                            entries.append((*target, label(_node_text(child)), depth))
+                    else:
+                        walk_nav(child, depth + 1 if child.tag in {"ol", "ul"} else depth)
+
+            if navs:
+                walk_nav(navs[0], -1)
+        if not entries and ncx is not None:
+            doc = posixpath.normpath(posixpath.join(posixpath.dirname(opf), ncx.attrib["href"]))
+            nav_map = ET.fromstring(archive.read(doc)).find(ncx_ns + "navMap")
+
+            def walk_ncx(parent: Any, depth: int) -> None:
+                for point in parent.findall(ncx_ns + "navPoint"):
+                    text = point.find(f"{ncx_ns}navLabel/{ncx_ns}text")
+                    content = point.find(ncx_ns + "content")
+                    target = resolve(doc, content.attrib.get("src", "")) if content is not None else None
+                    if target and text is not None:
+                        entries.append((*target, label(text.text or ""), depth))
+                    walk_ncx(point, depth + 1)
+
+            if nav_map is not None:
+                walk_ncx(nav_map, 0)
+    except (KeyError, ET.ParseError):
+        return []
+    if not entries:
+        return []
+    depths = sorted({depth for *_, depth in entries})
+    level = next((d for d in depths if sum(1 for *_, e in entries if e <= d) >= _MIN_TOC_ENTRIES), depths[-1])
+    return [(name, fragment, title) for name, fragment, title, depth in entries if depth <= level]
+
+
+def _is_cover(blocks: list[dict[str, Any]]) -> bool:
+    return bool(blocks) and all(b["type"] in {"image", "divider"} for b in blocks)
+
+
+def _section_chars(blocks: list[dict[str, Any]]) -> int:
+    return sum(len(b.get("text", "")) for b in blocks)
+
+
+def _toc_sections(files: list[tuple[str, list[dict[str, Any]], dict[str, int]]], toc: list[tuple[str, str | None, str]]) -> list[tuple[str, list[dict[str, Any]]]] | None:
+    """Split the book's blocks at table-of-contents targets. None when the
+    TOC doesn't resolve into at least two sections (caller falls back)."""
+    all_blocks: list[dict[str, Any]] = []
+    file_start: dict[str, int] = {}
+    file_anchors: dict[str, dict[str, int]] = {}
+    for name, blocks, anchors in files:
+        file_start[name] = len(all_blocks)
+        file_anchors[name] = anchors
+        all_blocks.extend(blocks)
+
+    cuts: list[tuple[int, str]] = []
+    for name, fragment, title in toc:
+        if name not in file_start:
+            continue
+        offset = file_anchors[name].get(fragment, None) if fragment else 0
+        if offset is None:
+            continue
+        position = file_start[name] + offset
+        # Keep reading order; several entries on one spot collapse to the first.
+        if position >= len(all_blocks) or (cuts and position <= cuts[-1][0]):
+            continue
+        cuts.append((position, title))
+    if len(cuts) < 2:
+        return None
+
+    sections: list[tuple[str, list[dict[str, Any]]]] = []
+    if cuts[0][0] > 0:
+        lead = all_blocks[:cuts[0][0]]
+        sections.append(("Cover" if _is_cover(lead) else cuts[0][1], lead))
+    for index, (position, title) in enumerate(cuts):
+        end = cuts[index + 1][0] if index + 1 < len(cuts) else len(all_blocks)
+        sections.append((title or f"Section {index + 1}", all_blocks[position:end]))
+
+    merged: list[tuple[str, list[dict[str, Any]]]] = []
+    for title, blocks in sections:
+        short = title != "Cover" and _section_chars(blocks) < _MIN_SECTION_CHARS
+        if short and merged and merged[-1][0] != "Cover":
+            merged[-1] = (merged[-1][0], merged[-1][1] + blocks)
+        else:
+            merged.append((title, blocks))
+    return merged
+
+
 def _epub(source: Path, metadata: DocumentMetadata, destination: Path) -> None:
     with zipfile.ZipFile(source) as archive:
         names = set(archive.namelist())
@@ -191,6 +321,7 @@ def _epub(source: Path, metadata: DocumentMetadata, destination: Path) -> None:
         spine = [item.attrib.get("idref") for item in root.findall(".//opf:itemref", ns)]
         chapters: list[dict[str, Any]] = []
         assets: dict[str, str] = {}
+        files: list[tuple[str, list[dict[str, Any]], dict[str, int]]] = []
         total = 0
         for index, ref in enumerate(spine):
             href = manifest.get(ref)
@@ -202,12 +333,29 @@ def _epub(source: Path, metadata: DocumentMetadata, destination: Path) -> None:
             parser = _Parser()
             parser.feed(archive.read(name).decode("utf-8", errors="replace"))
             chapter_id = "chapter-" + hashlib.sha1(name.encode()).hexdigest()[:12]
-            blocks = _blocks(parser.root, chapter_id, name, names, assets)
-            if not blocks:
-                continue
-            heading = next((b.get("text") for b in blocks if b["type"] == "heading"), f"Chapter {len(chapters) + 1}")
-            chapters.append({"id": chapter_id, "title": heading, "source": name, "blocks": blocks})
-            total += sum(len(b.get("text", "")) for b in blocks)
+            anchors: dict[str, int] = {}
+            blocks = _blocks(parser.root, chapter_id, name, names, assets, anchors)
+            files.append((name, blocks, anchors))
+            total += _section_chars(blocks)
+
+        sections = _toc_sections(files, _toc_entries(archive, opf, root, names))
+        if sections is not None:
+            for index, (title, blocks) in enumerate(sections):
+                if not blocks:
+                    continue
+                chapter_id = "chapter-" + hashlib.sha1(f"{index}:{title}".encode()).hexdigest()[:12]
+                for block_index, block in enumerate(blocks):
+                    block["id"] = _stable(chapter_id, block_index)
+                chapters.append({"id": chapter_id, "title": title, "source": "toc", "blocks": blocks})
+        else:
+            # No usable TOC: one chapter per spine document, as before.
+            for name, blocks, _ in files:
+                if not blocks:
+                    continue
+                chapter_id = "chapter-" + hashlib.sha1(name.encode()).hexdigest()[:12]
+                fallback = "Cover" if _is_cover(blocks) else f"Chapter {len(chapters) + 1}"
+                heading = next((b.get("text") for b in blocks if b["type"] == "heading"), fallback)
+                chapters.append({"id": chapter_id, "title": heading, "source": name, "blocks": blocks})
         package: dict[str, Any] = {"schema": VERSION, "title": metadata.title, "author": metadata.author, "totalCharacters": total, "chapters": [{"id": c["id"], "title": c["title"], "file": f"chapters/{c['id']}.json"} for c in chapters]}
         _write_package(destination, package, chapters, archive, assets)
 

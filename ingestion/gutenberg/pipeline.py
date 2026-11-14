@@ -53,7 +53,7 @@ def process_gutenberg_book(
         ),
         package,
     )
-    reader_key = f"gutenberg/{gutenberg_id}/reader-v4.zip"
+    reader_key = f"gutenberg/{gutenberg_id}/reader-v5.zip"
     reader_url = storage.upload(str(package), reader_key, "application/zip")
     cover_url = None
     cover_key = None
