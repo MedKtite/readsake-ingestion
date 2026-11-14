@@ -1,0 +1,50 @@
+# Readsake ingestion worker on the Ancora VPS, in /opt/readsake/ingestion
+# (see deploy/DEPLOY.md). The CI copies this file to the server on every
+# deploy — edit it here, not there.
+#
+# Its own compose project, so the backend's `up --remove-orphans` never
+# touches it. It joins the backend project's network to reach the database,
+# reads the same /opt/readsake/.env (passed with --env-file ../.env), and
+# writes its output to Cloudflare R2 (S3_* in that .env) — not to this server.
+name: readsake-ingestion
+
+services:
+  worker:
+    image: ghcr.io/medktite/readsake-ingestion:${INGESTION_TAG:-latest}
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:?}:${DB_PASSWORD:?}@readsake-db:5432/${DB_NAME:?}
+      STORAGE_BACKEND: s3
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      WHISPER_DEVICE: cpu
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    mem_limit: 2g
+    volumes:
+      # faster-whisper downloads its model on first use; keep it across deploys.
+      - whisper_cache:/root/.cache/huggingface
+    networks:
+      - readsake
+
+  # Home "Trending now" and "Top authors": publishes the Gutenberg ranking
+  # snapshot every night at 02:15 UTC. It only waits for that time on start,
+  # so after the first deploy run it once (see deploy/DEPLOY.md).
+  discovery:
+    image: ghcr.io/medktite/readsake-ingestion:${INGESTION_TAG:-latest}
+    command: ["python", "-m", "ingestion.sync_gutenberg_trending", "--daily-at", "02:15"]
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:?}:${DB_PASSWORD:?}@readsake-db:5432/${DB_NAME:?}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    mem_limit: 256m
+    networks:
+      - readsake
+
+networks:
+  readsake:
+    name: readsake_default
+    external: true
+
+volumes:
+  whisper_cache:
