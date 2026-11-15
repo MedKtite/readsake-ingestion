@@ -1,4 +1,4 @@
-# Marginalia — content ingestion pipeline
+# Readsake — content ingestion pipeline
 
 Standalone, **offline** Python pipeline that prepares audiobook and Gutenberg content ahead
 of time. It is not a live service: run it manually or via cron on your own
@@ -40,19 +40,19 @@ You don't need to manually install Python, ffmpeg, or start the service every ti
 # Start Postgres, MinIO, and Ingestion worker from repo root
 docker compose up -d
 
-# Or build & start only the ingestion worker from marginalia-ingestion/
+# Or build & start only the ingestion worker from readsake-ingestion/
 docker compose up -d --build
 ```
 
-In Docker Desktop, the `marginalia-ingestion` container will automatically run the background worker, polling and processing any uploaded books or Gutenberg ingestion jobs.
+In Docker Desktop, the `readsake-ingestion` container will automatically run the background worker, polling and processing any uploaded books or Gutenberg ingestion jobs.
 
 ### Option 2: Local Python Setup
 
 Requirements: Python 3.10+, **ffmpeg + ffprobe on PATH**, network access to
-librivox.org / archive.org, and the Marginalia PostgreSQL database.
+librivox.org / archive.org, and the Readsake PostgreSQL database.
 
 ```bash
-cd marginalia-ingestion
+cd readsake-ingestion
 python -m venv .venv && . .venv/Scripts/activate   # Windows
 pip install -r requirements.txt
 
@@ -163,10 +163,10 @@ python -m pytest tests -q
 
 ## Notes / deviations from the original spec
 
-- The spec's `book` table is Marginalia's **`gutenberg_catalog`** (the synced
+- The spec's `book` table is Readsake's **`gutenberg_catalog`** (the synced
   Gutenberg index); `book.has_audio` became `gutenberg_catalog.has_audio`
   (added by the migration).
-- **Chapter opening sentences aren't stored in Marginalia's schema**, so the
+- **Chapter opening sentences aren't stored in Readsake's schema**, so the
   cut-confirmation input (`book_opening`) is plumbed through
   `audio_cleaner.trim_track` but the orchestrator passes `None`. Marker-based
   cuts + the audit log are the active safety net; if chapter openings are

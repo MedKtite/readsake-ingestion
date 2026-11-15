@@ -331,7 +331,7 @@ def sync_gutenberg_discovery(
         raise ValueError("book_limit and author_limit must be positive")
 
     with requests.Session() as session:
-        session.headers["User-Agent"] = "Marginalia-Ingestion/1.0"
+        session.headers["User-Agent"] = "Readsake-Ingestion/1.0"
         try:
             raw_books, official_authors = fetch_gutenberg_rankings(
                 session,

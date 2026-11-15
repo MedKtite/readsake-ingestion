@@ -43,7 +43,7 @@ def run_once(*, db: Db, storage, worker_id: str) -> bool:
     if job is None:
         return False
     try:
-        with tempfile.TemporaryDirectory(prefix="marginalia-ingestion-") as directory:
+        with tempfile.TemporaryDirectory(prefix="readsake-ingestion-") as directory:
             result = process_job(job, db=db, storage=storage, work_dir=Path(directory))
         store.complete(job.id, result)
     except Exception as exc:
@@ -56,7 +56,7 @@ def run_once(*, db: Db, storage, worker_id: str) -> bool:
 
 def main() -> None:
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Run Marginalia ingestion jobs")
+    parser = argparse.ArgumentParser(description="Run Readsake ingestion jobs")
     parser.add_argument("--once", action="store_true", help="process at most one job")
     parser.add_argument("--poll-seconds", type=float, default=5.0)
     args = parser.parse_args()

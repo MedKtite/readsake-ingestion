@@ -1,4 +1,4 @@
-"""Marginalia ingestion — offline LibriVox audiobook pipeline.
+"""Readsake ingestion — offline LibriVox audiobook pipeline.
 
 Downloads volunteer-read recordings, trims the spoken LibriVox boilerplate
 (intro/outro), loudness-normalizes, uploads the cleaned MP3s, and records

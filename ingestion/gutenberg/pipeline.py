@@ -15,7 +15,7 @@ from ..documents.reader_package import build_reader_package
 from .cleaner import VERSION, clean_epub
 
 
-USER_AGENT = "MarginaliaIngestion/1.0 (Gutenberg reader preparation)"
+USER_AGENT = "ReadsakeIngestion/1.0 (Gutenberg reader preparation)"
 
 
 def epub_url(gutenberg_id: int) -> str:

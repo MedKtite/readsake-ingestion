@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- Marginalia ingestion pipeline — audiobook tables.
+-- Readsake ingestion pipeline — audiobook tables.
 -- Run once against the same database the Spring Boot backend uses.
 -- Global read-only catalog data (like gutenberg_catalog) — no RLS.
 -- ─────────────────────────────────────────────────────────────────────────────

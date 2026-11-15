@@ -1,4 +1,4 @@
--- Keep this migration in sync with marginalia-db/migrations/003_gutenberg_trending.sql.
+-- Keep this migration in sync with readsake-db/migrations/003_gutenberg_trending.sql.
 -- It lives here too so the standalone ingestion deployment can be installed
 -- without depending on a second checkout.
 

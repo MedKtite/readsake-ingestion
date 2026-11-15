@@ -1,10 +1,10 @@
 """Thin PostgreSQL layer (psycopg v3) over the backend's database.
 
-The pipeline's "book" table is Marginalia's `gutenberg_catalog` — the synced
+The pipeline's "book" table is Readsake's `gutenberg_catalog` — the synced
 Project Gutenberg index (gutenberg_id PK, title, authors, title_norm). The
 three audiobook tables come from migrations/001_audiobooks.sql.
 
-Config: DATABASE_URL, e.g. postgresql://user:pass@localhost:5432/marginalia
+Config: DATABASE_URL, e.g. postgresql://user:pass@localhost:5432/readsake
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ class Db:
                 # Prevent two scheduler instances from publishing concurrently.
                 cur.execute(
                     "SELECT pg_advisory_xact_lock("
-                    "hashtext('marginalia:gutenberg-discovery-snapshot'))"
+                    "hashtext('readsake:gutenberg-discovery-snapshot'))"
                 )
                 cur.execute("DELETE FROM gutenberg_trending_books")
                 cur.executemany(

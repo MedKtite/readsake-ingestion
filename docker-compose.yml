@@ -1,4 +1,4 @@
-# Marginalia Ingestion standalone compose
+# Readsake Ingestion standalone compose
 # Connects to Postgres and MinIO running on the host / Docker network
 
 services:
@@ -6,13 +6,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: marginalia-ingestion
+    container_name: readsake-ingestion
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://marginalia:Ktite%402030%25@host.docker.internal:5440/marginalia}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://readsake:Ktite%402030%25@host.docker.internal:5440/readsake}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://host.docker.internal:9000}
-      S3_BUCKET: ${S3_BUCKET:-marginalia-uploads}
+      S3_BUCKET: ${S3_BUCKET:-readsake-uploads}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
       S3_REGION: ${S3_REGION:-us-east-1}

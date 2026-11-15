@@ -18,7 +18,7 @@ import requests
 log = logging.getLogger(__name__)
 
 API_URL = "https://librivox.org/api/feed/audiobooks"
-USER_AGENT = "MarginaliaIngestion/0.1 (offline catalog pipeline)"
+USER_AGENT = "ReadsakeIngestion/0.1 (offline catalog pipeline)"
 PAGE_SIZE = 50
 MIN_REQUEST_INTERVAL_S = 1.0
 MAX_RETRIES = 4

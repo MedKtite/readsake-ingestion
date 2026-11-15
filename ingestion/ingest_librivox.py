@@ -121,7 +121,7 @@ def _run_feed(args: argparse.Namespace) -> None:
     )
     client = LibrivoxClient()
     session = requests.Session()
-    session.headers["User-Agent"] = "MarginaliaIngestion/0.1"
+    session.headers["User-Agent"] = "ReadsakeIngestion/0.1"
 
     with Db() as db, tempfile.TemporaryDirectory(prefix="marg_ingest_") as tmp:
         storage = make_storage()
@@ -157,7 +157,7 @@ def _run_manual_review(args: argparse.Namespace) -> None:
     """Reprocess only the tracks whose validation previously failed."""
     client = LibrivoxClient()
     session = requests.Session()
-    session.headers["User-Agent"] = "MarginaliaIngestion/0.1"
+    session.headers["User-Agent"] = "ReadsakeIngestion/0.1"
 
     with Db() as db, tempfile.TemporaryDirectory(prefix="marg_review_") as tmp:
         storage = make_storage()
