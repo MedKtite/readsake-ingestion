@@ -7,6 +7,7 @@ with row-level locking so multiple worker processes can run safely.
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -50,6 +51,27 @@ class JobStore:
             job_id = str(cur.fetchone()["id"])
             self._event(cur, job_id, "enqueued", detail={"job_type": job_type})
             return job_id
+
+    def prepare_trending(self, limit: int) -> int:
+        """Queue popular unprepared titles ahead of demand, using the durable queue."""
+        with self._db.connection.cursor() as cur:
+            cur.execute(
+                """INSERT INTO ingestion_jobs
+                   (job_type, source_key, payload, max_attempts)
+                   SELECT 'GUTENBERG_READER', c.gutenberg_id::text,
+                          jsonb_build_object('gutenberg_id', c.gutenberg_id), 6
+                   FROM gutenberg_trending_books t
+                   JOIN gutenberg_catalog c ON c.gutenberg_id = t.gutenberg_id
+                   WHERE c.reader_file_key IS NULL AND NOT EXISTS (
+                       SELECT 1 FROM ingestion_jobs j
+                       WHERE j.job_type = 'GUTENBERG_READER'
+                         AND j.source_key = c.gutenberg_id::text
+                         AND (j.status IN ('pending', 'processing') OR
+                              (j.status = 'failed' AND j.finished_at > NOW() - INTERVAL '15 minutes')))
+                   ORDER BY t.rank LIMIT %s""",
+                (max(1, min(limit, 100)),),
+            )
+            return cur.rowcount
 
     def claim(self, worker_id: str) -> Optional[IngestionJob]:
         with self._db.connection.cursor() as cur:
@@ -113,7 +135,10 @@ class JobStore:
             if row is None:
                 return
             should_retry = retry and row["attempts"] < row["max_attempts"]
-            delay_seconds = min(300, 5 * (2 ** max(0, row["attempts"] - 1)))
+            # Dependency outages back off for minutes, with jitter across workers.
+            base = 60 if error.startswith("SOURCE_UNAVAILABLE:") else 5
+            delay_seconds = min(3600, base * (2 ** max(0, row["attempts"] - 1)))
+            delay_seconds += random.randint(0, max(1, delay_seconds // 4))
             cur.execute(
                 """
                 UPDATE ingestion_jobs

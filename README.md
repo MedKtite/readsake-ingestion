@@ -182,3 +182,29 @@ lookup. Once this pipeline has populated `audiobooks`/`audio_tracks`, the
 backend should serve those cleaned tracks (and prefer them over the live
 lookup) — that's a small Spring Boot endpoint + a client switch, tracked
 separately.
+
+## Verified audiobook openings
+
+The original audio URLs remain unchanged. For each track, supply the exact
+HTTPS URL used by Flutter and the first spoken lines of that track's book
+text. The proposal command requires FFmpeg, ffprobe, and faster-whisper.
+It transcribes only the opening and writes a review report.
+
+```bash
+python -m ingestion.review_audio_starts propose \
+  --url "$TRACK_URL" --opening "$OPENING_TEXT" --output /tmp/track-review.json
+```
+
+Listen to the exact track from the proposed position and compare it with the
+opening text. Pick a point after the announcement with a short lead-in before
+the first line. For a clean track, approve `0`. If you cannot confirm the
+boundary, leave the track unapproved. Review every track of a LibriVox edition.
+
+```bash
+python -m ingestion.review_audio_starts approve \
+  --review /tmp/track-review.json --start-ms "$VERIFIED_START_MS" \
+  --manifest ../frontend-mobile/assets/reader/verified_audio_starts.json
+```
+
+Approval updates only the reviewed URL in the Flutter asset. Rebuild the
+mobile app to bundle the updated manifest.

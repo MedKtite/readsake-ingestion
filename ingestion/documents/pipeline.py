@@ -37,7 +37,9 @@ def process_uploaded_document(book_id: str, source_key: str, fmt: str, *, db: Db
     cover_url = None
     if metadata.cover_path:
         cover_key = f"{prefix}/cover.jpg"
-        cover_url = storage.upload(metadata.cover_path, cover_key, "image/jpeg")
+        storage.upload(metadata.cover_path, cover_key, "image/jpeg")
+        # The bucket is private: the backend streams the cover from cover_key.
+        cover_url = f"/covers/books/{book_id}"
 
     result = {
         "reader_key": reader_key,

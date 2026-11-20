@@ -27,6 +27,11 @@ def extract_pdf(source: Path, text_output: Path, cover_output: Path) -> Document
             image = doc.extract_image(images[0][0])
             cover_output.write_bytes(image["image"])
             cover_path = str(cover_output)
+        else:
+            # Text-only title page: use a render of the page itself as the cover.
+            pixmap = doc[0].get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+            cover_output.write_bytes(pixmap.tobytes("jpeg"))
+            cover_path = str(cover_output)
     doc.close()
     return DocumentMetadata(
         title=clean_text(metadata.get("title")),

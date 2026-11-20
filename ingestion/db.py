@@ -147,25 +147,35 @@ class Db:
 
     def mark_gutenberg_processed(self, gutenberg_id: int, result: dict[str, Any]) -> None:
         """Record the immutable, versioned reader artifact for a catalog book."""
-        with self._conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE gutenberg_catalog
-                SET reader_file_key = %s,
-                    reader_cover_key = %s,
-                    reader_metadata = %s::jsonb,
-                    reader_processor_version = %s,
-                    reader_processed_at = NOW()
-                WHERE gutenberg_id = %s
-                """,
-                (
-                    result.get("reader_key"),
-                    result.get("cover_key"),
-                    json.dumps(result),
-                    result.get("processor_version"),
-                    gutenberg_id,
-                ),
-            )
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE gutenberg_catalog
+                    SET reader_file_key = %s,
+                        reader_cover_key = COALESCE(%s, reader_cover_key),
+                        reader_metadata = %s::jsonb,
+                        reader_processor_version = %s,
+                        reader_processed_at = NOW()
+                    WHERE gutenberg_id = %s
+                    """,
+                    (
+                        result.get("reader_key"),
+                        result.get("cover_key"),
+                        json.dumps(result),
+                        result.get("processor_version"),
+                        gutenberg_id,
+                    ),
+                )
+
+                cur.execute(
+                    """UPDATE books SET reading_file_key = %s, processing_status = 'ready',
+                       processing_error = NULL, processing_version = %s,
+                       cover_url = CASE WHEN %s::text IS NOT NULL THEN %s ELSE cover_url END,
+                       updated_at = NOW() WHERE gutenberg_id = %s""",
+                    (result.get("reader_key"), result.get("processor_version"),
+                     result.get("cover_key"), f"/covers/gutenberg/{gutenberg_id}", gutenberg_id),
+                )
 
     def mark_uploaded_processed(self, book_id: str, result: dict[str, Any]) -> None:
         with self._conn.cursor() as cur:

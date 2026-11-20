@@ -16,6 +16,10 @@ from pathlib import Path
 
 class StorageBackend(ABC):
     @abstractmethod
+    def exists(self, key: str) -> bool:
+        """Return false only for an absent object; propagate storage outages."""
+
+    @abstractmethod
     def upload(self, local_path: str, key: str, content_type: str = "application/octet-stream") -> str:
         """Store the file under `key`; return the URL/path to record in DB."""
 
@@ -25,6 +29,9 @@ class StorageBackend(ABC):
 
 
 class LocalStorage(StorageBackend):
+    def exists(self, key: str) -> bool:
+        return (self._root / key).is_file()
+
     def __init__(self, root: str, public_base: str = ""):
         self._root = Path(root)
         self._public_base = public_base.rstrip("/")
@@ -44,6 +51,16 @@ class LocalStorage(StorageBackend):
 
 
 class S3Storage(StorageBackend):
+    def exists(self, key: str) -> bool:
+        from botocore.exceptions import ClientError
+        try:
+            self._client.head_object(Bucket=self._bucket, Key=key)
+            return True
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise
+
     def __init__(self, bucket: str, endpoint_url: str = "", public_base: str = ""):
         import boto3  # imported here so local-only runs don't need it
         from botocore.config import Config

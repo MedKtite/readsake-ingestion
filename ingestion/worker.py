@@ -59,12 +59,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run Readsake ingestion jobs")
     parser.add_argument("--once", action="store_true", help="process at most one job")
     parser.add_argument("--poll-seconds", type=float, default=5.0)
+    parser.add_argument("--prepare-trending", type=int, default=0,
+                        help="queue up to 100 popular missing reader packages before processing")
     args = parser.parse_args()
 
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     worker_id = f"{socket.gethostname()}:{os.getpid()}"
     with Db() as db:
         storage = make_storage()
+        if args.prepare_trending > 0:
+            queued = JobStore(db).prepare_trending(args.prepare_trending)
+            LOGGER.info("Queued %s popular reader packages", queued)
         while True:
             had_job = run_once(db=db, storage=storage, worker_id=worker_id)
             if args.once:
